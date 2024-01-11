@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Wire
+GenericName=Wire Secure Messenger
+Comment=A secure messenger with E2EE
+Exec=/usr/local/bin/wire
+Icon=/usr/share/icons/hicolor/256x256/pacstall/com.wire.white-logo.png
+Keywords=wire;secure;messenger;chat;audio;video;
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;Video;Chat;Network;
