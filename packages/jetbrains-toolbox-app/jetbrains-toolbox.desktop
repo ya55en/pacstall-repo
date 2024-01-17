@@ -1,0 +1,11 @@
+[Desktop Entry]
+Icon=/opt/JetBrains/Toolbox/toolbox.svg
+Exec=/opt/JetBrains/Toolbox/bin/jetbrains-toolbox %u
+Version=1.0
+Type=Application
+Categories=Development
+Name=JetBrains Toolbox
+StartupWMClass=jetbrains-toolbox
+Terminal=false
+MimeType=x-scheme-handler/jetbrains;
+StartupNotify=false

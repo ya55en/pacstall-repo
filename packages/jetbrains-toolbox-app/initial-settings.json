@@ -1,0 +1,13 @@
+{
+    "autostart": false,
+    "install_location": "/opt/JetBrains/toolbox-apps",
+    "shell_scripts": {
+        "location": "/opt/JetBrains/toolbox-scripts"
+    },
+    "tools": {
+        "localize_tools": true
+    },
+    "update": {
+        "install_automatically": false
+    }
+}
