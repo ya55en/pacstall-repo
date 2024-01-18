@@ -1,8 +1,8 @@
 {
     "autostart": false,
-    "install_location": "/opt/JetBrains/toolbox-apps",
+    "install_location": "~/.local/share/JetBrains/toolbox-apps",
     "shell_scripts": {
-        "location": "/opt/JetBrains/toolbox-scripts"
+        "location": "~/.local/share/JetBrains/toolbox-scripts"
     },
     "tools": {
         "localize_tools": true

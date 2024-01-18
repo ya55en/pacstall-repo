@@ -1,5 +1,25 @@
 # shellcheck shell=bash disable=SC2034
 
+## TODO:
+## - Rewrite timeouts with `return 12` (vs. `exit 12`)
+## - Revise the *IMPORTANT* sections
+##     TODO: Remove the section about REBOOTING?
+##     TODO: Explain about removing the package.
+##     TODO: Provide URL to an .md file on Github where this info
+##           can be found - ask the guy to bookmark it.
+## - Provide a README URL
+## - Check all TODOs
+## - SIMPLIFY
+##   - replace ${pkgdir}/${homedir}"/.local/share with $_localshare_dir
+## - Test
+##
+##
+##
+## DONE:
+## - Notify the user to NOT open the minimized app in the tray
+## - Use kill routine
+## - Enforce the custom .settings.json
+
 pkgname='jetbrains-toolbox'
 name="${pkgname}-app"
 gives="${pkgname}"
@@ -22,89 +42,216 @@ Integrate with GitHub, GitLab, or Bitbucket.
 https://www.jetbrains.com/toolbox-app/
 "
 
-# TODO: remove comments when not needed
-#
-# Create some directories:
-# E.g. /opt/JetBrains/{toolbox-scripts,toolbox-apps,toolbox-self-extractor}
-# ~/.local/share/JetBrains/Toolbox/ - do we need this?
-# Warn the user NOT to change the two paths settings. (do we need this?)
-
-# Move the self-extractor to /opt/JetBrains/toolbox-self-extractor
-# Deal with the case it already exists (e.g. rename it)
-# Execute it, -minimized if possible
-# Wait for the extractor PID to disappear
-# kill the application
-# Store prepared config to ~/.local/share/JetBrains/Toolbox/
-# Move ~/.local/share/JetBrains/Toolbox to ${pkdir}/${homedir}/.local/share/JetBrains/Toolbox
-
-# install -d -m755 ~/.local/share/JetBrains/self-extractor
-# mv jetbrains-toolbox "${pkgdir}/.local/share/JetBrains/self-extractor"
-
-_apt_action="$1"
+# _repo_base_url='https://raw.githubusercontent.com/ya55en/pacstall-repo/main'
+_repo_base_url='file:///home/ya55en/Work/Mine/pacstall-repo'
+_apt_args=$*
+_curent_user="$USER"
 
 # shellcheck disable=SC2086
 prepare() {
-  set +x
   local _app_pid
   local _process_re='.*\./jetbrains-toolbox.*--wait-for-pid'
 
   _ensure_install_dir_not_exists
 
-  ./jetbrains-toolbox --minimize &
-  # > /tmp/jetbrains-toolbox-setup.log 2>&1
+  ./jetbrains-toolbox --minimize > /tmp/jetbrains-toolbox-setup.log 2>&1 &
 
   # Seems like the _wait_and_return_pid call confuses jetbrains-toolbox's
   # check for a single instance, so let's wait a bit to skip that:
-  printf 'I: Extracting and installing (please wait - takes some time!) ...\n'
-  sleep 6
+  cat << EOS
+I: Extracting and installing. Please, wait (takes some time!) ...
+I: Meanwhile, the Toolbox may appear minimized as a tray icon - do NOT
+I: open it yet or use the application - it is not fully installed. You
+I: will do that later, after a *reboot* (instructions follow).
+EOS
 
+  sleep 6
   _app_pid=$(_wait_and_return_pid "$_process_re")
   printf 'D: toolbox PID=[%s]\n' $_app_pid
 
-  # Waiting for the .settings file to appear
-  # while ! ps ax | grep -q './jetbrains-toolbox'; do sleep 0.2; done
-  # _wait_until_gogo
-
-  _wait_until_extraction_ends $_app_pid
+  _wait_extraction_end $_app_pid
 
   printf 'D: Terminating toolbox PID=[%s] ...' $_app_pid
   kill $_app_pid > /tmp/jetbrains-toolbox-setup.log 2>&1
   _wait_for_pid_to_die "$_process_re" $_app_pid
   printf ' Done.\n'
-
-  # TODO: Remove V
-  # Try again in case we've got something else above:
-  # _app_pid=$(_wait_and_return_pid "$_process_re")
-  # [ -n "$_app_pid" ] && {
-  #   printf 'D: Terminating also toolbox PID=[%s] ...' $_app_pid
-  #   kill $_app_pid > /tmp/jetbrains-toolbox-setup.log 2>&1
-  #   _wait_for_pid_to_die "$_process_re" $_app_pid
-  #   printf ' Done.\n'
-  # }
-
-  # _wait_for_pid_to_die "$_process_re" $_app_pid
-
-  # printf 'D: _app_pid=[%s] stopped.\n' $_app_pid
-
-  # Wait unti /tmp/gogo
-  # _wait_until_gogo
-
-  #_wait_extractor_pid
-  # _kill_running_instance
-  set -x
 }
 
-_wait_until_extraction_ends() {
+package() {
+  local _cred=(-o "${_curent_user}" -g "${_curent_user}")
+
+  # Make sure no leftovers from broken builds
+  sudo rm -rf "${pkgdir}/{*,.*}" 2> /dev/null || true
+  rm -f "$homedir"/.config/autostart/jetbrains-toolbox.desktop # no autostart by default
+  printf 'D: Cleaned up %s.\n' "$pkgdir"
+
+  # Download and store custom settings
+  curl -sSLO "${_repo_base_url}/packages/jetbrains-toolbox-app/settings.json"
+  chmod 664 settings.json
+  printf 'D: Downloaded settings.json\n'
+
+  mv -f \
+    "${homedir}"/.local/share/JetBrains/Toolbox/.settings.json \
+    "${homedir}"/.local/share/JetBrains/Toolbox/.settings.orig.json
+  printf 'D: Moved original .settings.json\n'
+
+  sudo install -m664 settings.json "${homedir}"/.local/share/JetBrains/Toolbox/.settings.json
+
+  # Create directories
+  sudo install -d "${_cred[@]}" -m750 "${pkgdir}/${homedir}"/.local/share/JetBrains/
+  sudo install -d "${_cred[@]}" -m700 "${pkgdir}/${homedir}"/.local/share/applications/
+
+  # Move installed product to $pkgdir
+  mv "${homedir}"/.local/share/JetBrains/Toolbox "${pkgdir}/${homedir}"/.local/share/JetBrains/
+  mv "${homedir}"/.local/share/applications/jetbrains-toolbox.desktop "${pkgdir}/${homedir}"/.local/share/applications/
+}
+
+post_install() {
+  # local _cred=(-o "${_curent_user}" -g "${_curent_user}")
+  local _main_dir="${homedir}/.local/share/JetBrains"
+
+  # install -d "${_cred[@]}" -m750 "${homedir}"/.local/share/JetBrains/toolbox-apps
+  # For some reason, install createas these with root:root ownership, no matter what,
+  # so let's do it "the other way"(tm) ;)
+  for subdir in toolbox-apps toolbox-scripts; do
+    # shellcheck disable=SC2174
+    mkdir -pm 750 "$_main_dir/$subdir"
+  done
+
+  # mkdir "$_the_dirs"
+  # chown "$_curent_user":"$_curent_user" "$_the_dirs"
+  # chmod 750 "$_the_dirs"
+
+  _show_post_install_message
+}
+
+post_remove() {
+  set -x
+  local _full_dir
+
+  printf 'D: _apt_args=[%s]\n' "$_apt_args"
+
+  case "$_apt_args" in
+    *purge*)
+      printf 'D: PURGING: removing toolbox-apps, toolbox-scripts (and NO MESSAGE)\n'
+
+      rm -rf "${homedir}"/.local/share/JetBrains/Toolbox
+
+      for subdir in toolbox-apps toolbox-scripts; do
+        _full_dir="${homedir}/.local/share/JetBrains/$subdir"
+        rmdir --ignore-fail-on-non-empty "$_full_dir" 2> /tmp/jb.log || {
+          printf 'post_remove(pacstall): directory %s not empty so not removed\n' "$_full_dir"
+        }
+      done
+      ;;
+
+    *remove*)
+      printf 'D: REMOVE (explicit) - Trying to kill Toolbox\n'
+
+      _kill_running_app
+      ;;
+
+    *)
+      # remove and any other cases, like 'failed-upgrade' are here
+      printf 'D: REMOVE (so message IS DUE)\n'
+
+      printf 'D: Removing .desktop files...\n'
+      rm -f \
+        "${homedir}"/.local/share/applications/jetbrains-toolbox.desktop \
+        "${homedir}"/.config/autostart/jetbrains-toolbox.desktop
+
+      _show_post_remove_message
+      ;;
+      # *)
+      #   set +x
+      #   printf 'E: Unexpected apt-get command line: [%s], terminating\n' "$_apt_args"
+      #   exit 12
+      #   ;;
+  esac
+
+  set +x
+}
+
+## private
+
+_show_post_install_message() {
+  cat << EOS
+
+**IMPORTANT:**
+
+  1. REBOOT: You need to reboot your machine to make sure any leftovers in /tmp
+        and elsewere created by the installer are removed. The app may segfault
+        if this is not done.
+
+  2. Complete the setup
+        After the reboot (!), run the application from your Desktop Menu or
+        with this command:
+
+        $ "${homedir}"/.local/share/JetBrains/Toolbox/bin/jetbrains-toolbox
+
+        Follow the wizard for setting it up (telemetry, accepting the License
+        Agreement, chosse language). Then click the gear icon on top right to
+        open the full-blooded "Settings" dialog.
+        
+        CAUTION: Do NOT switch on the auto-updates. Use pacstall to update the
+        application. The built-in auto-update may break the package (will break
+        version tracking for sure).
+
+        Feel free to change the other options if you need to.
+
+        Finally, make sure your scripts path is included into your PATH.
+        Or feel free to change the default to '~/.local/bin' - seems like a
+        good location.
+
+  Enjoy ;)
+
+EOS
+}
+
+_show_post_remove_message() {
+  cat << EOS
+
+**IMPORTANT:**
+
+  1. REBOOT: You need to reboot your machine to make sure any leftovers in /tmp
+        and elsewere created by the app image.
+
+  2. To see if there are any leftovers, run this:
+
+     $ find ~/ -iname '*toolbox*' 2>/dev/null
+
+     Two known such locations you may want to check:
+     - "${homedir}/.local/share/JetBrains/toolbox-apps
+     - "${homedir}/.local/share/JetBrains/toolbox-scripts
+
+  Cheers ;)
+
+EOS
+}
+
+# shellcheck disable=SC2086
+_kill_running_app() {
+  local _app_pid
+  _app_pid=$(pgrep -fo '^\.\/jetbrains-toolbox')
+
+  printf 'D: _app_pid=[%s]\n' $_app_pid
+
+  [ -n "$_app_pid" ] && {
+    printf 'I: Toolbox is running, terminating (PID=[%s])' "$_app_pid"
+    kill $_app_pid || true
+  }
+}
+
+_wait_extraction_end() {
   local _app_pid=$1
   local _regex='Calculating directory size at .+ done:'
-  local logfile_path="${homedir}/.local/share/JetBrains/Toolbox/logs/toolbox.log"
+  local _logfile_path="${homedir}/.local/share/JetBrains/Toolbox/logs/toolbox.log"
 
-  # Timeout 240 * 0.5s = 120s
-  for i in {0..240}; do
-    if [ -e "$logfile_path" ] && tail -2 "$logfile_path" | grep -Eq "$_regex"; then
-      echo 'I: Toolbox Logfile marker detected.'
+  # Timeout 360 * 0.5s = 180s
+  for i in {1..360}; do
+    if [ -e "$_logfile_path" ] && tail -2 "$_logfile_path" | grep -Eq "$_regex"; then
+      echo 'I: Toolbox Logfile marker detected: self-extraction ended.'
       sleep 4
-      echo 'I: Toolbox self-extraction finished.'
       return
     else
       sleep 0.5
@@ -119,126 +266,24 @@ _wait_until_extraction_ends() {
 }
 
 _ensure_install_dir_not_exists() {
-  # TODO: Consider this to be "${homedir}"/.local/share/JetBrains/Toolbox
-
-  local _target_dir="${homedir}"/.local/share/JetBrains
+  local _target_dir="${homedir}"/.local/share/JetBrains/Toolbox
 
   printf 'D: Ensure main dir does not exist: %s\n' "$_target_dir"
 
-  # We need to first do this check as if a broken link has been left,
-  # -e reports it does not exist :/
-  [ -h "$_target_dir" ] && rm -f "$_target_dir"
-
-  ! [ -e "$_target_dir" ] && return
+  # Remove a broken link. Need to first do this first as if a broken link is
+  # there, `test -e` returns 1 (non-existent) but still cannot create the dir
+  [ -h "$_target_dir" ] && ! [ -e "$_target_dir" ] && rm -f "$_target_dir"
 
   [ -d "$_target_dir" ] && rmdir --ignore-fail-on-non-empty "$_target_dir"
 
-  if [ -h "$_target_dir" ] || [ -e "$_target_dir" ]; then
-    printf 'E: FATAL: Target directory path exists: %s\n' "$_target_dir"
-    exit 11
-  fi
+  ! [ -e "$_target_dir" ] && return
+
+  printf 'E: FATAL: Target directory path exists: %s\n' "$_target_dir"
+  exit 11
 }
 
-package() {
-  set -x
-
-  sudo rm -rf "${pkgdir}/${homedir}"/{*,.*} # in case there are leftovers
-
-  # local credentials="-u '${USER}' -g '${USER}'"
-  local cred=(-o "${USER}" -g "${USER}")
-
-  sudo install -d "${cred[@]}" -m755 "${pkgdir}/${homedir}"/.local/share/JetBrains/
-  sudo install -d "${cred[@]}" -m755 "${pkgdir}/${homedir}"/.local/share/applications/
-  sudo install -d "${cred[@]}" -m755 "${pkgdir}/${homedir}"/.config/autostart/
-
-  mv "${homedir}"/.local/share/JetBrains/Toolbox "${pkgdir}/${homedir}"/.local/share/JetBrains/
-  mv "${homedir}"/.local/share/applications/jetbrains-toolbox.desktop "${pkgdir}/${homedir}"/.local/share/applications/
-  mv -f ~/.config/autostart/jetbrains-toolbox.desktop "${pkgdir}/${homedir}"/.config/autostart/
-
-  # TODO: Copt custom settings to
-  # TODO: Create directories for apps and scripts
-  # TODO: Deal with scripts needed in PATH
-  set +x
-
-  # _wait_until_gogo
-}
-
-post_install() {
-  echo "
-**IMPORTANT:**
-
-  1. REBOOT: You need to reboot your machine to make sure any leftovers in /tmp
-        and elsewere created by the app image (which does self-extraction,
-        automamtic installation and what not) are removed. The app may segfault
-        if this is not done.
-
-  2. Complete the setup
-    
-     # TODO: Explain about setting NOT recommended to change
-     # TODO: Explain about removing the package.
-     # TODO: Provide URL to an .md file on Github where this info
-     #       can be found - ask the guy to bookmark it.
-
-     Start the Jetbrains Toolbox using your DE menu, or execute this command:
-
-     $ "${homedir}"/.local/share/JetBrains/Toolbox/bin/jetbrains-toolbox
-
-     then complete the configuration. Make sure your scripts path is included
-     into your PATH; "${homedir}"/.local/bin is a good location (IMHO).
-
-     # TODO: Provide a URL to a README
-
-  Enjoy ;)
-"
-}
-
-post_remove() {
-  # TODO: terminate the application
-  # TODO: Check the current stash
-  printf 'D: _apt_action=[%s]' "$_apt_action"
-
-  rm -f \
-    "${homedir}"/.local/share/applications/jetbrains-toolbox.desktop \
-    "${homedir}"/.config/autostart/jetbrains-toolbox.desktop
-
-  rm -rf "${homedir}"/.cache/JetBrains/Toolbox
-
-  echo "
-**IMPORTANT:**
-
-  1. REBOOT: You need to reboot your machine to make sure any leftovers in /tmp
-        and elsewere created by the app image.
-
-  2. To make sure you don't have any leftovers, run this:
-
-     $ find ~ -iname '*toolbox*' 2>/dev/null
-
-  Cheers ;)
-  "
-}
-
-# _wait_until_gogo() {
-#   echo "@@@@@@ Waiting until /tmp/gogo for you to check ${pkgdir}/${homedir}/.local/share/JetBrains/ ..."
-
-#   while ! [ -e /tmp/gogo ]; do sleep 0.5; done
-#   rm -f /tmp/gogo
-# }
-
+# shellcheck disable=SC2086
 _wait_and_return_pid() {
-  # local pid_to_wait
-  # pid_to_wait=$(ps ax | awk '/jetbrains-toolbox[ \t]+--wait-for-pid/ && ! /awk/ {print $7}' | head -1)
-
-  # [ -z "$pid_to_wait" ] && {
-  #   printf 'E: Cound NOT get proper pid_to_wait: [$%s], terminating' "$pid_to_wait"
-  #   exit 11
-  # }
-
-  # printf "I: Waiting for PID=[%s]..." "$pid_to_wait"
-  # while ps ax | awk '{print $1}' | grep -q "$pid_to_wait"; do
-  #   sleep 0.2
-  # done
-  # printf " Done.\n"
-
   local _command="$1"
   local _pid
 
@@ -250,13 +295,11 @@ _wait_and_return_pid() {
 
   _pid=$(pgrep -fo "$_command")
 
-  # shellcheck disable=SC2086
   [ -z $_pid ] && {
     printf 'E: TIMEOUT waiting for PID of [%s], terminating\n' "$_command" > /dev/stderr
     exit 12
   }
 
-  # shellcheck disable=SC2086
   printf '%s' $_pid
 }
 
@@ -265,7 +308,6 @@ _wait_for_pid_to_die() {
   local _pid=$2
 
   for i in {1..50}; do
-    # shellcheck disable=SC2086
     if ! pgrep -fo "$_command" | grep -q $_pid; then
       return
     else
@@ -275,22 +317,4 @@ _wait_for_pid_to_die() {
 
   printf 'E: TIMEOUT waiting for PID of [%s] to die, terminating\n' "$_pid" > /dev/stderr
   exit 12
-}
-
-_kill_running_instance() {
-  local pid_to_kill
-  pid_to_kill=$(ps ax | awk '/jetbrains-toolbox --wait-for-pid/ && ! /awk/ {print $1}' | sort | head -1)
-
-  [ -z "$pid_to_kill" ] && {
-    printf 'E: Cound NOT get proper pid_to_kill: [$%s], terminating\n' "$pid_to_kill"
-    exit 11
-  }
-
-  printf 'I: Killing the self-extractor (PID=[%s])...' "$pid_to_kill"
-  kill pid_to_kill
-
-  while ps ax | awk '{print $1}' | grep -q "$pid_to_kill"; do
-    sleep 0.2
-  done
-  printf " Done.\n"
 }
