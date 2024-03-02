@@ -1,25 +1,5 @@
 # shellcheck shell=bash disable=SC2034
 
-## TODO:
-## - Rewrite timeouts with `return 12` (vs. `exit 12`)
-## - Revise the *IMPORTANT* sections
-##     TODO: Remove the section about REBOOTING?
-##     TODO: Explain about removing the package.
-##     TODO: Provide URL to an .md file on Github where this info
-##           can be found - ask the guy to bookmark it.
-## - Provide a README URL
-## - Check all TODOs
-## - SIMPLIFY
-##   - replace ${pkgdir}/${homedir}"/.local/share with $_localshare_dir
-## - Test
-##
-##
-##
-## DONE:
-## - Notify the user to NOT open the minimized app in the tray
-## - Use kill routine
-## - Enforce the custom .settings.json
-
 pkgname='jetbrains-toolbox'
 name="${pkgname}-app"
 gives="${pkgname}"
